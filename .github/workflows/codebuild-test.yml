@@ -114,3 +114,43 @@ jobs:
             --instance-id "$INSTANCE_ID" \
             --query "{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}" \
             --output json
+
+      
+      - name: Test S3 transfer from CodeBuild to EC2
+        shell: bash
+        run: |
+          BUCKET="remitos-test-deploy-970478134604-us-east-2"
+          INSTANCE_ID="i-04b24da830b29a3f5"
+          KEY="test/hello.txt"
+
+          # Create a test artifact
+          echo "Hello from CodeBuild to EC2 through S3!" > /tmp/hello.txt
+
+          # Upload from CodeBuild
+          aws s3 cp /tmp/hello.txt "s3://$BUCKET/$KEY" \
+            --region us-east-2
+
+          echo "Upload successful"
+
+          # Ask EC2 to download and display the file
+          COMMAND_ID=$(aws ssm send-command \
+            --region us-east-2 \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "{\"commands\":[\"aws s3 cp s3://$BUCKET/$KEY /tmp/hello.txt --region us-east-2\",\"cat /tmp/hello.txt\"]}" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          aws ssm wait command-executed \
+            --region us-east-2 \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
+
+          aws ssm get-command-invocation \
+            --region us-east-2 \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}" \
+            --output json
