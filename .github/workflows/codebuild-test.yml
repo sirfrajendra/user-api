@@ -1,0 +1,24 @@
+
+name: RemitOS CodeBuild Runner Test
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  runner-test:
+    runs-on:
+      - codebuild-test-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify CodeBuild runner
+        run: |
+          echo "Hello from AWS CodeBuild!"
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "Runner: $RUNNER_NAME"
