@@ -32,9 +32,9 @@ jobs:
       - name: Verify build output
         run: |
           echo "Checking NestJS build..."
-          test -f dist/main.js
+          test -f dist/src/main.js
           echo "Build successful!"
-          ls -la dist/
+          ls -la dist/src/
 
 
       - name: Verify CodeBuild runner
