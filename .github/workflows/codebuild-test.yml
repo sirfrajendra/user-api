@@ -390,11 +390,15 @@ jobs:
 
           BUCKET="remitos-test-deploy-970478134604-us-east-2"
           ARTIFACT="releases/user-api-${GITHUB_SHA}.tar.gz"
+          LOCAL_ARTIFACT="user-api-${GITHUB_SHA}.tar.gz"
+
+          SHA256=$(sha256sum "$LOCAL_ARTIFACT" | awk '{print $1}')
 
           cat > staging-passed.json <<EOF
           {
             "commit": "${GITHUB_SHA}",
             "artifact": "s3://${BUCKET}/${ARTIFACT}",
+            "sha256": "${SHA256}",
             "branch": "${GITHUB_REF_NAME}",
             "status": "STAGING_PASSED",
             "workflow_run_id": "${GITHUB_RUN_ID}",
@@ -407,4 +411,4 @@ jobs:
             --region us-east-2 \
             --content-type application/json
 
-          echo "Staging-passed artifact recorded."
+          echo "Staging-passed artifact recorded with SHA-256: ${SHA256}"
