@@ -126,6 +126,119 @@ jobs:
             --query "{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}" \
             --output json
 
+
+      - name: Deploy application on EC2
+        shell: bash
+        run: |
+          INSTANCE_ID="i-04b24da830b29a3f5"
+
+          REMOTE_SCRIPT=$(cat <<'EOF'
+          set -Eeuo pipefail
+
+          BASE="/opt/remitos-api"
+          RELEASE_DIR="${BASE}/releases/${RELEASE_SHA}"
+          CURRENT="${BASE}/current"
+
+          echo "Preparing release: ${RELEASE_SHA}"
+
+          cd "$RELEASE_DIR"
+
+          echo "Installing production dependencies..."
+          npm ci --omit=dev --ignore-scripts
+
+          chown -R remitos:remitos "$RELEASE_DIR"
+
+          PREVIOUS_RELEASE=$(readlink "$CURRENT" || true)
+
+          echo "Previous release: ${PREVIOUS_RELEASE:-none}"
+
+          echo "Activating new release..."
+          rm -f "${CURRENT}.new"
+          ln -s "$RELEASE_DIR" "${CURRENT}.new"
+          mv -Tf "${CURRENT}.new" "$CURRENT"
+
+          echo "Restarting application..."
+          systemctl restart remitos-api
+
+          echo "Checking API health..."
+
+          HEALTHY=false
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/; then
+              HEALTHY=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$HEALTHY" != "true" ]; then
+            echo "New release failed health check."
+
+            if [ -n "$PREVIOUS_RELEASE" ]; then
+              echo "Rolling back to previous release..."
+
+              rm -f "${CURRENT}.rollback"
+              ln -s "$PREVIOUS_RELEASE" "${CURRENT}.rollback"
+              mv -Tf "${CURRENT}.rollback" "$CURRENT"
+
+              systemctl restart remitos-api
+            fi
+
+            exit 1
+          fi
+
+          echo "Deployment successful!"
+          echo "Active release: $(readlink -f "$CURRENT")"
+          systemctl is-active remitos-api
+          EOF
+          )
+
+          SCRIPT_B64=$(printf '%s' "$REMOTE_SCRIPT" | base64 | tr -d '\n')
+
+          COMMAND="RELEASE_SHA=${GITHUB_SHA} bash -c 'echo ${SCRIPT_B64} | base64 -d | bash'"
+
+          PARAMETERS=$(printf '{"commands":["%s"]}' "$COMMAND")
+
+          COMMAND_ID=$(aws ssm send-command \
+            --region us-east-2 \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "$PARAMETERS" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          STATUS=""
+
+          for i in {1..60}; do
+            STATUS=$(aws ssm get-command-invocation \
+              --region us-east-2 \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" \
+              --output text 2>/dev/null || true)
+
+            if [[ "$STATUS" == "Success" || "$STATUS" == "Failed" || "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" ]]; then
+              break
+            fi
+
+            sleep 3
+          done
+
+          aws ssm get-command-invocation \
+            --region us-east-2 \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --output json
+
+          if [[ "$STATUS" != "Success" ]]; then
+            echo "EC2 deployment failed. Status: $STATUS"
+            exit 1
+          fi
+
+
       - name: Verify CodeBuild runner
         run: |
           echo "Hello from AWS CodeBuild!"
