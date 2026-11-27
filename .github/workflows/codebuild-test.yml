@@ -97,7 +97,34 @@ jobs:
             --query "{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}" \
             --output json
 
+            - name: Extract application release on EC2
+        shell: bash
+        run: |
+          INSTANCE_ID="i-04b24da830b29a3f5"
+          ARTIFACT="user-api-${GITHUB_SHA}.tar.gz"
+          RELEASE_DIR="/opt/remitos-api/releases/${GITHUB_SHA}"
 
+          COMMAND_ID=$(aws ssm send-command \
+            --region us-east-2 \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "{\"commands\":[\"mkdir -p ${RELEASE_DIR}\",\"tar -xzf /opt/remitos-api/shared/${ARTIFACT} -C ${RELEASE_DIR}\",\"chown -R remitos:remitos ${RELEASE_DIR}\",\"echo Release extracted:\",\"ls -la ${RELEASE_DIR}\",\"ls -la ${RELEASE_DIR}/dist/src\"]}" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          aws ssm wait command-executed \
+            --region us-east-2 \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
+
+          aws ssm get-command-invocation \
+            --region us-east-2 \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}" \
+            --output json
 
       - name: Verify CodeBuild runner
         run: |
