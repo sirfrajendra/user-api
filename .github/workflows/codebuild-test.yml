@@ -378,3 +378,33 @@ jobs:
             --instance-id "$INSTANCE_ID" \
             --query "{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}" \
             --output json
+
+      - name: Record staging-passed artifact
+        shell: bash
+        run: |
+
+          if [[ "$GITHUB_REF_NAME" != "Release" ]]; then
+            echo "Not a Release branch. Skipping staging-passed marker."
+            exit 0
+          fi
+
+          BUCKET="remitos-test-deploy-970478134604-us-east-2"
+          ARTIFACT="releases/user-api-${GITHUB_SHA}.tar.gz"
+
+          cat > staging-passed.json <<EOF
+          {
+            "commit": "${GITHUB_SHA}",
+            "artifact": "s3://${BUCKET}/${ARTIFACT}",
+            "branch": "${GITHUB_REF_NAME}",
+            "status": "STAGING_PASSED",
+            "workflow_run_id": "${GITHUB_RUN_ID}",
+            "passed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+          aws s3 cp staging-passed.json \
+            "s3://${BUCKET}/staging-passed.json" \
+            --region us-east-2 \
+            --content-type application/json
+
+          echo "Staging-passed artifact recorded."
