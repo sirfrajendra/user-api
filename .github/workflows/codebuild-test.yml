@@ -66,6 +66,38 @@ jobs:
 
           echo "Deployment artifact uploaded successfully."
 
+      
+      - name: Download deployment artifact onto EC2
+        shell: bash
+        run: |
+          BUCKET="remitos-test-deploy-970478134604-us-east-2"
+          INSTANCE_ID="i-04b24da830b29a3f5"
+          ARTIFACT="user-api-${GITHUB_SHA}.tar.gz"
+          DEST="/opt/remitos-api/shared"
+
+          COMMAND_ID=$(aws ssm send-command \
+            --region us-east-2 \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "{\"commands\":[\"aws s3 cp s3://${BUCKET}/releases/${ARTIFACT} ${DEST}/${ARTIFACT} --region us-east-2\",\"chown remitos:remitos ${DEST}/${ARTIFACT}\",\"ls -lh ${DEST}/${ARTIFACT}\",\"tar -tzf ${DEST}/${ARTIFACT} | head -20\"]}" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          aws ssm wait command-executed \
+            --region us-east-2 \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
+
+          aws ssm get-command-invocation \
+            --region us-east-2 \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}" \
+            --output json
+
+
 
       - name: Verify CodeBuild runner
         run: |
