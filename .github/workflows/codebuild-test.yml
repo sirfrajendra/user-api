@@ -37,6 +37,36 @@ jobs:
           ls -la dist/src/
 
 
+      - name: Package application
+        shell: bash
+        run: |
+          ARTIFACT="user-api-${GITHUB_SHA}.tar.gz"
+
+          tar -czf "$ARTIFACT" \
+            dist/src \
+            package.json \
+            package-lock.json \
+            .npmrc
+
+          echo "Deployment package created:"
+          ls -lh "$ARTIFACT"
+
+          echo "Verifying package contents:"
+          tar -tzf "$ARTIFACT"
+
+      - name: Upload deployment artifact to S3
+        shell: bash
+        run: |
+          BUCKET="remitos-test-deploy-970478134604-us-east-2"
+          ARTIFACT="user-api-${GITHUB_SHA}.tar.gz"
+
+          aws s3 cp "$ARTIFACT" \
+            "s3://${BUCKET}/releases/${ARTIFACT}" \
+            --region us-east-2
+
+          echo "Deployment artifact uploaded successfully."
+
+
       - name: Verify CodeBuild runner
         run: |
           echo "Hello from AWS CodeBuild!"
